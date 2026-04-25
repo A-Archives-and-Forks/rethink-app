@@ -15,18 +15,15 @@
  */
 package com.celzero.bravedns.iab
 
-import org.koin.core.module.Module
-import org.koin.dsl.module
+import android.content.Context
 
-/**
- * fdroid flavor stub for [BillingModule].
- *
- * Registers a no-op [BillingBackendClient] stub so that `main` source-set services
- * The fdroid flavor does not have billing module as of now v055v
- */
-object BillingModule {
-    val billingModules: Module = module {
-        single { BillingBackendClient(get()) }
-    }
+/** Stub: device-not-registered notifications are not supported in this build. */
+object DeviceNotRegisteredNotifier {
+    const val EXTRA_ENTITLEMENT_CID  = "dnr_entitlement_cid"
+    const val EXTRA_STORED_CID       = "dnr_stored_cid"
+    const val EXTRA_DEVICE_ID_PREFIX = "dnr_device_id_prefix"
+
+    @Suppress("UNUSED_PARAMETER")
+    fun cancel(context: Context) { /* no-op */ }
 }
 

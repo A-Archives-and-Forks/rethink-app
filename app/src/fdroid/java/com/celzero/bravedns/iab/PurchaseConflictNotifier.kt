@@ -15,18 +15,19 @@
  */
 package com.celzero.bravedns.iab
 
-import org.koin.core.module.Module
-import org.koin.dsl.module
+import android.content.Context
 
-/**
- * fdroid flavor stub for [BillingModule].
- *
- * Registers a no-op [BillingBackendClient] stub so that `main` source-set services
- * The fdroid flavor does not have billing module as of now v055v
- */
-object BillingModule {
-    val billingModules: Module = module {
-        single { BillingBackendClient(get()) }
-    }
+/** Stub: purchase-conflict notifications are not supported in this build. */
+object PurchaseConflictNotifier {
+    const val EXTRA_ENDPOINT       = "conflict_endpoint"
+    const val EXTRA_OPERATION      = "conflict_operation"
+    const val EXTRA_SERVER_MSG     = "conflict_server_msg"
+    const val EXTRA_ACCOUNT_ID     = "conflict_account_id"
+    const val EXTRA_DEVICE_ID      = "conflict_device_id"
+    const val EXTRA_PURCHASE_TOKEN = "conflict_purchase_token"
+    const val EXTRA_SKU            = "conflict_sku"
+
+    @Suppress("UNUSED_PARAMETER")
+    fun cancel(context: Context) { /* no-op */ }
 }
 
