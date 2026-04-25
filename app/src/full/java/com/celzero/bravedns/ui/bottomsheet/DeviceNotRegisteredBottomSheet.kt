@@ -24,39 +24,43 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import com.celzero.bravedns.R
-import com.celzero.bravedns.databinding.BottomsheetDeviceAuthErrorBinding
+import com.celzero.bravedns.databinding.BottomsheetDeviceNotRegisteredBinding
 import com.celzero.bravedns.iab.ServerApiError
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import androidx.core.net.toUri
 
 /**
- * Bottom sheet shown when a `/g/acc` or `/reg` API call returns HTTP 401.
+ * Bottom sheet shown when the CID embedded in the active entitlement payload
+ * (the authoritative Google Play CID) differs from the locally stored CID and
+ * the server cannot return a valid DID for the entitlement CID.
+ *
+ * This means the device is not registered under the subscription account.
+ * The user is guided to contact support with their account details.
  */
-class DeviceAuthErrorBottomSheet : BottomSheetDialogFragment() {
+class DeviceNotRegisteredBottomSheet : BottomSheetDialogFragment() {
 
-    private var _binding: BottomsheetDeviceAuthErrorBinding? = null
+    private var _binding: BottomsheetDeviceNotRegisteredBinding? = null
     private val binding get() = _binding!!
 
     companion object {
-        private const val TAG = "DeviceAuthErrorBS"
+        private const val TAG = "DeviceNotRegisteredBS"
 
-        private const val ARG_ACCOUNT_ID = "account_id"
+        private const val ARG_ENTITLEMENT_CID = "entitlement_cid"
+        private const val ARG_STORED_CID = "stored_cid"
         private const val ARG_DEVICE_ID_PREFIX = "device_id_prefix"
-        private const val ARG_OPERATION = "operation"
 
         private const val SUPPORT_EMAIL = "hello@celzero.com"
-        private const val EMAIL_SUBJECT = "Device Authorization Issue - RPN"
 
         /**
          * All data is passed via [Bundle] args so the fragment survives
          * configuration changes without holding a live reference to the error object.
          */
-        fun newInstance(error: ServerApiError.Unauthorized401): DeviceAuthErrorBottomSheet {
-            return DeviceAuthErrorBottomSheet().apply {
+        fun newInstance(error: ServerApiError.DeviceNotRegistered): DeviceNotRegisteredBottomSheet {
+            return DeviceNotRegisteredBottomSheet().apply {
                 arguments = Bundle().apply {
-                    putString(ARG_ACCOUNT_ID, error.accountId)
-                    putString(ARG_DEVICE_ID_PREFIX, error.deviceIdPrefix)
-                    putString(ARG_OPERATION, error.operation.name)
+                    putString(ARG_ENTITLEMENT_CID,  error.entitlementCid)
+                    putString(ARG_STORED_CID,        error.storedCid)
+                    putString(ARG_DEVICE_ID_PREFIX,  error.deviceIdPrefix)
                 }
             }
         }
@@ -73,19 +77,19 @@ class DeviceAuthErrorBottomSheet : BottomSheetDialogFragment() {
         container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View {
-        _binding = BottomsheetDeviceAuthErrorBinding.inflate(inflater, container, false)
+        _binding = BottomsheetDeviceNotRegisteredBinding.inflate(inflater, container, false)
         return binding.root
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        val args = requireArguments()
-        val accountId = args.getString(ARG_ACCOUNT_ID, "")
+        val args          = requireArguments()
+        val entitlementCid = args.getString(ARG_ENTITLEMENT_CID, "")
         val deviceIdPrefix = args.getString(ARG_DEVICE_ID_PREFIX, "")
 
-        populateDetails(accountId, deviceIdPrefix)
-        setupButtons(accountId, deviceIdPrefix)
+        populateDetails(entitlementCid, deviceIdPrefix)
+        setupButtons(entitlementCid, deviceIdPrefix)
     }
 
     override fun onDestroyView() {
@@ -93,14 +97,10 @@ class DeviceAuthErrorBottomSheet : BottomSheetDialogFragment() {
         _binding = null
     }
 
-    private fun populateDetails(accountId: String, deviceIdPrefix: String) {
-        // Show masked account ID (first 12 + last 4 chars); fall back to a placeholder
-        // if blank so the layout never appears empty.
-        binding.tvAccountId.text = maskCid(accountId).ifBlank {
-            getString(R.string.device_auth_error_id_unavailable)
-        }
+    private fun populateDetails(entitlementCid: String, deviceIdPrefix: String) {
+        binding.tvEntitlementCid.text = maskCid(entitlementCid)
+            .ifBlank { getString(R.string.device_auth_error_id_unavailable) }
 
-        // Show first 8 chars of device ID followed by "…" to indicate truncation.
         binding.tvDeviceIdPrefix.text = if (deviceIdPrefix.isNotBlank()) {
             "$deviceIdPrefix…"
         } else {
@@ -109,38 +109,38 @@ class DeviceAuthErrorBottomSheet : BottomSheetDialogFragment() {
     }
 
     /**
-     * Masks a CID/accountId to show only the first 12 and last 4 characters,
-     * separated by "…".
+     * Masks a CID to show only the first 12 and last 4 characters, separated by "…".
+     * For CIDs shorter than 16 characters the full value is returned unchanged.
      *
      * Example: "abcdefghijklmnopqrstuvwx" → "abcdefghijkl…uvwx"
      */
-    private fun maskCid(id: String): String {
-        if (id.length <= 16) return id
-        return "${id.take(12)}…${id.takeLast(4)}"
+    private fun maskCid(cid: String): String {
+        if (cid.length <= 16) return cid
+        return "${cid.take(12)}…${cid.takeLast(4)}"
     }
 
-    private fun setupButtons(accountId: String, deviceIdPrefix: String) {
+    private fun setupButtons(entitlementCid: String, deviceIdPrefix: String) {
         binding.btnEmailSupport.setOnClickListener {
-            openEmailClient(accountId, deviceIdPrefix)
+            openEmailClient(entitlementCid, deviceIdPrefix)
         }
-
         binding.btnDismiss.setOnClickListener {
             dismissAllowingStateLoss()
         }
     }
 
     /**
-     * Opens the device's email client pre-filled with the support address,
-     * subject, and a body that includes the account/device IDs so the customer
-     * does not have to type them manually.
+     * Opens the device's email client pre-filled with support address, subject,
+     * and a body that includes the entitlement CID and device ID prefix so the
+     * user does not have to type them manually.
      */
-    private fun openEmailClient(accountId: String, deviceIdPrefix: String) {
+    private fun openEmailClient(entitlementCid: String, deviceIdPrefix: String) {
         try {
+            val subject = getString(R.string.device_not_registered_email_subject)
             val body = buildString {
                 appendLine(getString(R.string.device_auth_error_email_body_greeting))
                 appendLine()
-                appendLine(getString(R.string.device_auth_error_email_body_details))
-                appendLine("  • ${getString(R.string.device_auth_error_account_id_label)}: $accountId")
+                appendLine(getString(R.string.device_not_registered_email_body_details))
+                appendLine("  • ${getString(R.string.device_not_registered_entitlement_cid_label)}: $entitlementCid")
                 appendLine("  • ${getString(R.string.device_auth_error_device_id_label)}: ${deviceIdPrefix}…")
                 appendLine()
                 appendLine(getString(R.string.device_auth_error_email_body_closing))
@@ -149,17 +149,15 @@ class DeviceAuthErrorBottomSheet : BottomSheetDialogFragment() {
             val intent = Intent(Intent.ACTION_SENDTO).apply {
                 data = "mailto:".toUri()
                 putExtra(Intent.EXTRA_EMAIL,   arrayOf(SUPPORT_EMAIL))
-                putExtra(Intent.EXTRA_SUBJECT, EMAIL_SUBJECT)
+                putExtra(Intent.EXTRA_SUBJECT, subject)
                 putExtra(Intent.EXTRA_TEXT,    body)
             }
 
             if (intent.resolveActivity(requireContext().packageManager) != null) {
                 startActivity(intent)
             } else {
-                // Fallback: open mail URI directly so Android can prompt the user
-                // to choose or install an email app.
                 val fallback = Intent(Intent.ACTION_VIEW,
-                    "mailto:$SUPPORT_EMAIL?subject=${Uri.encode(EMAIL_SUBJECT)}".toUri())
+                    "mailto:$SUPPORT_EMAIL?subject=${Uri.encode(subject)}".toUri())
                 startActivity(fallback)
             }
         } catch (e: Exception) {
@@ -175,4 +173,5 @@ class DeviceAuthErrorBottomSheet : BottomSheetDialogFragment() {
         if (isAdded) super.dismissAllowingStateLoss()
     }
 }
+
 
